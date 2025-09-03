@@ -1278,69 +1278,141 @@ ${dataTable}
   return (
     <SentryErrorBoundary>
       <div style={{
-        maxWidth: '800px',
-        margin: '0 auto',
-        padding: '20px',
-        fontFamily: 'Arial, sans-serif'
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+        paddingBottom: '40px'
       }}>
-      {/* ヘッダー */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-        <h1 style={{
-          color: '#333',
-          margin: 0
+        <div style={{
+          maxWidth: '900px',
+          margin: '0 auto',
+          padding: '20px',
+          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
         }}>
-          🎯 Strategic AI Platform - 統合分析コンサル
-        </h1>
-        
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '5px' }}>
-            👤 {user.name} ({user.company})
+      {/* 改善されたヘッダー */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        margin: '-20px -20px 30px -20px',
+        padding: '30px 20px',
+        borderRadius: '0 0 16px 16px',
+        color: 'white',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{
+              color: 'white',
+              margin: 0,
+              fontSize: '2rem',
+              fontWeight: '700',
+              textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+            }}>
+              🎯 Strategic AI Platform
+            </h1>
+            <p style={{
+              margin: '8px 0 0 0',
+              fontSize: '1.1rem',
+              opacity: 0.9,
+              fontWeight: '300'
+            }}>
+              統合分析コンサルティング
+            </p>
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '10px' }}>
-            使用回数: {user.usageCount} / {user.usageLimit}
+          
+          <div style={{ 
+            textAlign: 'right',
+            backgroundColor: 'rgba(255,255,255,0.1)',
+            padding: '15px 20px',
+            borderRadius: '12px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{ fontSize: '1rem', color: 'rgba(255,255,255,0.9)', marginBottom: '5px', fontWeight: '500' }}>
+              👤 {user.name}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '8px' }}>
+              {user.company}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', marginBottom: '15px' }}>
+              使用回数: <strong>{user.usageCount}</strong> / {user.usageLimit}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  // Sentryテスト用のエラーを送信
+                  console.log('🧪 Sentryテストエラーを送信中...');
+                  captureMessage('テスト: フロントエンドからSentryへの接続確認', 'info');
+                  Sentry.captureException(new Error('テスト用エラー: Sentry接続確認'));
+                  alert('Sentryテストメッセージを送信しました。Sentryダッシュボードを確認してください。');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  backgroundColor: 'rgba(231, 76, 60, 0.9)',
+                  color: 'white',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  transition: 'all 0.3s ease',
+                  backdropFilter: 'blur(10px)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(231, 76, 60, 1)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(231, 76, 60, 0.9)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                🧪 Sentryテスト
+              </button>
+              <button
+                onClick={handleLogout}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  backgroundColor: 'rgba(108, 117, 125, 0.9)',
+                  color: 'white',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  transition: 'all 0.3s ease',
+                  backdropFilter: 'blur(10px)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(108, 117, 125, 1)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(108, 117, 125, 0.9)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => {
-                // Sentryテスト用のエラーを送信
-                console.log('🧪 Sentryテストエラーを送信中...');
-                captureMessage('テスト: フロントエンドからSentryへの接続確認', 'info');
-                Sentry.captureException(new Error('テスト用エラー: Sentry接続確認'));
-                alert('Sentryテストメッセージを送信しました。Sentryダッシュボードを確認してください。');
-              }}
-              style={{
-                padding: '5px 15px',
-                fontSize: '0.8rem',
-                backgroundColor: '#e74c3c',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              🧪 Sentryテスト
-            </button>
-            <button
-              onClick={handleLogout}
-              style={{
-                padding: '5px 15px',
-                fontSize: '0.8rem',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              ログアウト
-            </button>
-          </div>
+        </div>
         </div>
       </div>
 
-      {/* 分析タイプ選択セクション */}
-      <div style={{ marginBottom: '30px' }}>
-        <h2 style={{ color: '#333', marginBottom: '15px', fontSize: '1.2rem' }}>
+      {/* 改善された分析タイプ選択セクション */}
+      <div style={{ 
+        marginBottom: '30px',
+        backgroundColor: 'white',
+        padding: '25px',
+        borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+        border: '1px solid rgba(255,255,255,0.2)'
+      }}>
+        <h2 style={{ 
+          color: '#2c3e50', 
+          marginBottom: '20px', 
+          fontSize: '1.4rem',
+          fontWeight: '600',
+          textAlign: 'center'
+        }}>
           🔍 分析タイプを選択
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
@@ -1353,14 +1425,32 @@ ${dataTable}
                 key={type.id}
                 onClick={() => isAccessible && setSelectedAnalysisType(type.id)}
                 style={{
-                  padding: '20px',
-                  border: `2px solid ${isSelected ? '#007bff' : '#e0e0e0'}`,
-                  borderRadius: '8px',
-                  backgroundColor: isSelected ? '#f8f9ff' : (isAccessible ? 'white' : '#f5f5f5'),
+                  padding: '24px',
+                  border: `3px solid ${isSelected ? '#667eea' : 'transparent'}`,
+                  borderRadius: '16px',
+                  backgroundColor: isSelected ? 
+                    'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)' : 
+                    (isAccessible ? 'white' : '#f8f9fa'),
                   cursor: isAccessible ? 'pointer' : 'not-allowed',
                   opacity: isAccessible ? 1 : 0.6,
-                  transition: 'all 0.2s ease',
-                  position: 'relative'
+                  transition: 'all 0.3s ease',
+                  position: 'relative',
+                  boxShadow: isSelected ? 
+                    '0 8px 32px rgba(102, 126, 234, 0.3)' : 
+                    '0 4px 16px rgba(0,0,0,0.08)',
+                  transform: isSelected ? 'translateY(-4px)' : 'none'
+                }}
+                onMouseEnter={(e) => {
+                  if (isAccessible) {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 8px 32px rgba(102, 126, 234, 0.2)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (isAccessible && !isSelected) {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)';
+                  }
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
