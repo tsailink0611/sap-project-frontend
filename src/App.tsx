@@ -1538,20 +1538,26 @@ ${dataTable}
         )}
       </div>
 
-      {/* ファイルアップロードセクション（ドラッグ&ドロップ対応） */}
+      {/* 改善されたファイルアップロードセクション */}
       <div 
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         style={{
           marginBottom: '30px',
-          padding: '30px',
-          border: `3px dashed ${isDragging ? '#007bff' : '#ddd'}`,
-          borderRadius: '12px',
-          backgroundColor: isDragging ? '#e7f3ff' : '#fafafa',
+          padding: '40px',
+          border: `3px dashed ${isDragging ? '#667eea' : 'rgba(102, 126, 234, 0.3)'}`,
+          borderRadius: '20px',
+          background: isDragging ? 
+            'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)' : 
+            'white',
           textAlign: 'center',
           transition: 'all 0.3s ease',
-          cursor: 'pointer'
+          cursor: 'pointer',
+          boxShadow: isDragging ? 
+            '0 8px 32px rgba(102, 126, 234, 0.3)' : 
+            '0 4px 16px rgba(0,0,0,0.08)',
+          transform: isDragging ? 'scale(1.02)' : 'scale(1)'
         }}
       >
         <div style={{ fontSize: '48px', marginBottom: '15px' }}>
