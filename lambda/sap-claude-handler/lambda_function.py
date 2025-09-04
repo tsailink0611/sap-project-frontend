@@ -754,8 +754,8 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
     try:
         logger.info("🔍 Bedrock Vision API での画像分析を開始")
         
-        # 画像処理は Claude 3 Sonnet を使用（Vision対応確実）
-        vision_model_id = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        # 画像処理は Claude Sonnet 4 を使用（最新・最高性能）
+        vision_model_id = "anthropic.claude-4-sonnet-20250101-v1:0"
         
         # カスタムプロンプトがある場合はそれを使用、なければデフォルト
         if custom_prompt.strip():
@@ -826,8 +826,9 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
             })
         }
         
-        logger.info(f"🤖 Claude 3 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
+        logger.info(f"🤖 Claude Sonnet 4 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
         logger.info(f"📦 リクエストサイズ: {len(json.dumps(message))} bytes")
+        logger.info(f"💰 予想コスト: Claude Sonnet 4 (出力100万トークン=$15, 画像分析3000トークン想定=$0.045≈¥6.8)")
         
         # Bedrock Vision APIを呼び出し
         try:
@@ -844,7 +845,20 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
             logger.error(f"❌ エラータイプ: {type(api_error).__name__}")
             raise api_error
         
-        logger.info("✅ Claude 3 Vision からレスポンス受信")
+        logger.info("✅ Claude Sonnet 4 Vision からレスポンス受信")
+        
+        # 使用量とコストを計算
+        usage = response_body.get('usage', {})
+        input_tokens = usage.get('input_tokens', 0)
+        output_tokens = usage.get('output_tokens', 0)
+        total_tokens = input_tokens + output_tokens
+        
+        # Claude Sonnet 4 コスト計算 ($15/1M出力トークン想定)
+        estimated_cost_usd = (output_tokens / 1000000) * 15
+        estimated_cost_jpy = estimated_cost_usd * 151  # USD→JPY換算
+        
+        logger.info(f"📊 トークン使用量: 入力={input_tokens}, 出力={output_tokens}, 合計={total_tokens}")
+        logger.info(f"💰 実際のコスト: ${estimated_cost_usd:.4f} (約{estimated_cost_jpy:.2f}円)")
         
         # レスポンスから分析結果を抽出
         if 'content' in response_body and len(response_body['content']) > 0:
