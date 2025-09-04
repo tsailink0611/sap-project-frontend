@@ -767,62 +767,151 @@ def _process_image_with_textract(image_data: str, mime_type: str) -> str:
         logger.error(f"Textract error: {str(e)}")
         return f"テキスト抽出エラー: {str(e)}"
 
-def _analyze_document_image(image_data: str, mime_type: str, analysis_type: str) -> str:
-    """画像書類を分析してビジネス分析を実行"""
+def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysis_type: str, custom_prompt: str = "") -> str:
+    """Bedrock Vision APIで画像書類を直接分析"""
     try:
-        # Textractでテキスト抽出
-        extracted_text = _process_image_with_textract(image_data, mime_type)
+        logger.info("🔍 Bedrock Vision API での画像分析を開始")
         
-        if "エラー" in extracted_text:
-            return extracted_text
-            
-        # 抽出されたテキストの種類を判定
-        document_type = "不明な書類"
-        if any(keyword in extracted_text for keyword in ["領収書", "レシート", "receipt"]):
-            document_type = "領収書・レシート"
-        elif any(keyword in extracted_text for keyword in ["請求書", "invoice", "bill"]):
-            document_type = "請求書"
-        elif any(keyword in extracted_text for keyword in ["名刺", "business card"]):
-            document_type = "名刺"
-        elif any(keyword in extracted_text for keyword in ["報告書", "レポート", "report"]):
-            document_type = "報告書・レポート"
-            
-        # AI分析用プロンプト作成
-        prompt = f"""
-以下の{document_type}の内容を分析し、ビジネス上の洞察を提供してください：
+        # ビジョン対応モデルを使用
+        vision_model_id = "us.anthropic.claude-3-sonnet-20240229-v1:0"
+        
+        # カスタムプロンプトがある場合はそれを使用、なければデフォルト
+        if custom_prompt.strip():
+            analysis_prompt = f"""
+以下の画像について、ユーザーの質問に答えてください：
 
-【抽出されたテキスト】
-{extracted_text}
+ユーザーの質問: {custom_prompt}
 
-【分析観点】
-1. 書類の種類と内容の概要
-2. 重要な数値・金額・日付の特定
-3. ビジネス上の意味と活用可能な情報
-4. 改善提案・注意点（該当する場合）
-5. データ入力・管理上の推奨事項
-
-日本語で分かりやすく分析結果を提供してください。
+画像の内容を詳しく分析し、質問に対して具体的で実用的な回答を提供してください。
+数値、日付、金額などの重要な情報があれば必ず抽出してください。
 """
-        
-        # Bedrockで分析実行
-        analysis_result = _bedrock_converse(MODEL_ID, REGION, prompt)
-        
-        return f"""📄 **書類画像分析結果**
+        else:
+            analysis_prompt = """
+この画像を詳細に分析し、以下の観点でビジネス分析を行ってください：
 
-**書類種類**: {document_type}
+1. **書類種類の特定**: レシート、請求書、名刺、報告書、その他の分類
+2. **重要情報の抽出**: 
+   - 金額・価格・数量
+   - 日付・時刻
+   - 会社名・店舗名・連絡先
+   - 商品・サービス内容
+   - 税金・手数料等の内訳
 
-**AI分析結果**:
+3. **ビジネス活用提案**:
+   - 経費処理での注意点
+   - データ入力時の重要ポイント
+   - 管理・保存上の推奨事項
+
+4. **データ構造化**: 抽出した情報をJSON形式でも表示
+
+日本語で詳細かつ実用的に分析してください。
+"""
+
+        # Claude 3 Vision API用のメッセージ形式
+        bedrock = boto3.client('bedrock-runtime', region_name=REGION)
+        
+        # Base64画像データを準備
+        image_bytes = base64.b64decode(image_data)
+        
+        # Claude 3用のメッセージ構造
+        message = {
+            "modelId": vision_model_id,
+            "contentType": "application/json",
+            "accept": "application/json",
+            "body": json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 4000,
+                "temperature": 0.1,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": mime_type or "image/jpeg",
+                                    "data": image_data
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": analysis_prompt
+                            }
+                        ]
+                    }
+                ]
+            })
+        }
+        
+        logger.info(f"🤖 Claude 3 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
+        
+        # Bedrock Vision APIを呼び出し
+        response = bedrock.invoke_model(**message)
+        response_body = json.loads(response['body'].read())
+        
+        logger.info("✅ Claude 3 Vision からレスポンス受信")
+        
+        # レスポンスから分析結果を抽出
+        if 'content' in response_body and len(response_body['content']) > 0:
+            analysis_result = response_body['content'][0]['text']
+            
+            return f"""🔍 **Bedrock Vision AI画像分析結果**
+
 {analysis_result}
 
 ---
-**抽出された元テキスト**:
-```
-{extracted_text}
-```"""
-        
+📊 **分析情報**:
+- エンジン: Claude 3 Sonnet Vision
+- 処理時間: リアルタイム
+- 分析タイプ: {analysis_type}
+"""
+        else:
+            logger.error("❌ Claude 3 Vision から有効なレスポンスを取得できませんでした")
+            return "画像分析エラー: Vision APIからの応答が不正です"
+            
     except Exception as e:
-        logger.error(f"Document image analysis error: {str(e)}")
-        return f"書類画像分析エラー: {str(e)}"
+        logger.error(f"❌ Vision API画像分析エラー: {str(e)}")
+        
+        # フォールバック: DeepSeekで画像なしテキスト分析を試行
+        try:
+            logger.info("🔄 フォールバック: テキスト分析モードで処理を継続")
+            fallback_prompt = f"""
+画像分析が一時的に利用できませんが、以下の状況について分析とアドバイスを提供します：
+
+分析タイプ: {analysis_type}
+ユーザーリクエスト: {custom_prompt if custom_prompt else "画像書類の分析"}
+
+画像分析ツールとして一般的な書類分析のベストプラクティスとアドバイスを提供してください。
+"""
+            fallback_result = _bedrock_converse(MODEL_ID, REGION, fallback_prompt)
+            return f"""⚠️ **画像分析一時停止中 - 代替分析結果**
+
+{fallback_result}
+
+---
+📝 **注意**: 画像の詳細分析は現在利用できませんが、一般的な分析ガイドラインを提供しています。
+エラー詳細: {str(e)}
+"""
+        except Exception as fallback_error:
+            logger.error(f"❌ フォールバック分析も失敗: {str(fallback_error)}")
+            return f"""❌ **画像分析エラー**
+
+申し訳ございませんが、現在画像分析機能に技術的な問題が発生しています。
+
+**エラー詳細**: 
+- Vision API: {str(e)}
+- フォールバック: {str(fallback_error)}
+
+**推奨対応**:
+1. しばらく時間をおいてから再試行してください
+2. 画像が鮮明で読み取り可能か確認してください  
+3. サポートが必要な場合は管理者にお問い合わせください
+"""
+
+def _analyze_document_image(image_data: str, mime_type: str, analysis_type: str) -> str:
+    """画像書類を分析してビジネス分析を実行 (Vision API対応)"""
+    return _analyze_document_image_with_vision(image_data, mime_type, analysis_type)
 
 # ====== LINE Notify & Sentry Webhook処理 ======
 def send_line_notification(message: str) -> bool:
@@ -1004,8 +1093,20 @@ def lambda_handler(event, context):
             })
         
         try:
-            logger.info("Starting image analysis")
-            analysis_result = _analyze_document_image(image_data, mime_type, requested_analysis_type)
+            logger.info("🔍 Vision API画像分析を開始")
+            
+            # カスタムプロンプト（ユーザーからの追加質問）を取得
+            custom_prompt = data.get("prompt", "") or data.get("instruction", "")
+            
+            logger.info(f"📝 カスタムプロンプト: {custom_prompt[:100]}..." if custom_prompt else "📝 デフォルト画像分析を実行")
+            
+            # Vision APIで画像分析実行
+            analysis_result = _analyze_document_image_with_vision(
+                image_data, 
+                mime_type, 
+                requested_analysis_type,
+                custom_prompt
+            )
             
             return response_json(200, {
                 "response": {
