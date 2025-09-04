@@ -1025,9 +1025,35 @@ function App() {
   const handleSubmitJSON = async () => {
     if (!prompt.trim()) return;
 
-    // 画像分析の場合は既に処理済みなのでスキップ
+    // 画像分析の場合の追加質問処理
     if (selectedAnalysisType === 'document' && uploadedImagePreview) {
-      setResponse('📷 画像は既に分析済みです。新しい画像をアップロードするか、別の分析タイプを選択してください。');
+      // 画像に対する追加の質問として処理
+      try {
+        const payload = {
+          analysisType: selectedAnalysisType,
+          fileType: 'image',
+          imageData: uploadedImagePreview.split(',')[1], // Base64部分のみ
+          fileName: 'uploaded-image',
+          mimeType: 'image/jpeg',
+          prompt: prompt,
+          instruction: `画像について以下の質問に答えてください: ${prompt}`,
+          responseFormat: 'json'
+        };
+
+        const response = await axios.post(API_ENDPOINT, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 60000
+        });
+
+        const result = response.data;
+        setResponse(JSON.stringify(result, null, 2));
+        
+      } catch (error: any) {
+        console.error('📷 追加質問エラー:', error);
+        setResponse(`❌ 画像への追加質問でエラーが発生しました: ${error.message}`);
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -1073,10 +1099,51 @@ function App() {
     setIsLoading(true)
     setResponse('')
 
-    // 画像分析の場合は既に処理済みなのでスキップ
+    // 画像分析の場合の追加質問処理
     if (selectedAnalysisType === 'document' && uploadedImagePreview) {
-      setIsLoading(false);
-      setResponse('📷 画像は既に分析済みです。新しい画像をアップロードするか、別の分析タイプを選択してください。');
+      // 画像に対する追加の質問として処理
+      try {
+        const payload = {
+          analysisType: selectedAnalysisType,
+          fileType: 'image',
+          imageData: uploadedImagePreview.split(',')[1], // Base64部分のみ
+          fileName: 'uploaded-image',
+          mimeType: 'image/jpeg',
+          prompt: prompt, // ユーザーの質問を追加
+          instruction: `画像について以下の質問に答えてください: ${prompt}`
+        };
+
+        console.log('📷 画像への追加質問送信:', { prompt, payloadSize: JSON.stringify(payload).length });
+
+        const response = await axios.post(API_ENDPOINT, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 60000
+        });
+
+        const result = response.data;
+        let analysisResult = '';
+        
+        if (result.response && typeof result.response === 'string') {
+          analysisResult = result.response;
+        } else if (result.response && result.response.summary) {
+          analysisResult = result.response.summary;
+        } else if (result.summary) {
+          analysisResult = result.summary;
+        } else if (typeof result === 'string') {
+          analysisResult = result;
+        } else {
+          analysisResult = JSON.stringify(result, null, 2);
+        }
+
+        setResponse(`📷 画像分析結果 (追加質問: ${prompt}):\n\n${analysisResult}`);
+        setImageAnalysisResult(analysisResult);
+        
+      } catch (error: any) {
+        console.error('📷 追加質問エラー:', error);
+        setResponse(`❌ 画像への追加質問でエラーが発生しました: ${error.message}`);
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
 
