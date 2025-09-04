@@ -743,29 +743,9 @@ def _bedrock_converse(model_id: str, region: str, prompt: str) -> str:
     return "\n".join([t for t in txts if t]).strip()
 
 def _process_image_with_textract(image_data: str, mime_type: str) -> str:
-    """AWS Textractを使用して画像からテキストを抽出"""
-    try:
-        textract = boto3.client('textract', region_name=REGION)
-        
-        # Base64デコード
-        image_bytes = base64.b64decode(image_data)
-        
-        # Textractでテキスト抽出
-        response = textract.detect_document_text(
-            Document={'Bytes': image_bytes}
-        )
-        
-        # テキストを結合
-        extracted_text = []
-        for item in response['Blocks']:
-            if item['BlockType'] == 'LINE':
-                extracted_text.append(item['Text'])
-        
-        return '\n'.join(extracted_text)
-    
-    except Exception as e:
-        logger.error(f"Textract error: {str(e)}")
-        return f"テキスト抽出エラー: {str(e)}"
+    """Textract処理は廃止 - Vision API に移行済み"""
+    logger.warning("⚠️ Textract処理は廃止されました。Vision APIを使用してください。")
+    return "Textract処理は廃止されました。Vision APIを使用してください。"
 
 def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysis_type: str, custom_prompt: str = "") -> str:
     """Bedrock Vision APIで画像書類を直接分析"""
@@ -845,10 +825,22 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
         }
         
         logger.info(f"🤖 Claude 3 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
+        logger.info(f"📦 リクエストサイズ: {len(json.dumps(message))} bytes")
         
         # Bedrock Vision APIを呼び出し
-        response = bedrock.invoke_model(**message)
-        response_body = json.loads(response['body'].read())
+        try:
+            logger.info("📡 bedrock.invoke_model() を呼び出し中...")
+            response = bedrock.invoke_model(**message)
+            logger.info("✅ bedrock.invoke_model() 成功")
+            
+            response_body = json.loads(response['body'].read())
+            logger.info("✅ レスポンス JSON パース成功")
+            logger.info(f"📊 レスポンスキー: {list(response_body.keys())}")
+            
+        except Exception as api_error:
+            logger.error(f"❌ Bedrock Vision API 呼び出しエラー: {str(api_error)}")
+            logger.error(f"❌ エラータイプ: {type(api_error).__name__}")
+            raise api_error
         
         logger.info("✅ Claude 3 Vision からレスポンス受信")
         
@@ -1093,12 +1085,18 @@ def lambda_handler(event, context):
             })
         
         try:
-            logger.info("🔍 Vision API画像分析を開始")
+            logger.info("🔍 ======= Vision API画像分析開始 =======")
+            logger.info(f"🔍 分析タイプ: {requested_analysis_type}")
+            logger.info(f"🔍 MIMEタイプ: {mime_type}")
+            logger.info(f"🔍 画像データサイズ: {len(image_data)} chars")
             
             # カスタムプロンプト（ユーザーからの追加質問）を取得
             custom_prompt = data.get("prompt", "") or data.get("instruction", "")
             
             logger.info(f"📝 カスタムプロンプト: {custom_prompt[:100]}..." if custom_prompt else "📝 デフォルト画像分析を実行")
+            
+            # **重要**: Vision API専用処理を確実に実行
+            logger.info("🚀 _analyze_document_image_with_vision 関数を呼び出し")
             
             # Vision APIで画像分析実行
             analysis_result = _analyze_document_image_with_vision(
@@ -1107,6 +1105,9 @@ def lambda_handler(event, context):
                 requested_analysis_type,
                 custom_prompt
             )
+            
+            logger.info("✅ Vision API分析完了")
+            logger.info(f"📊 分析結果サイズ: {len(str(analysis_result))} chars")
             
             return response_json(200, {
                 "response": {
