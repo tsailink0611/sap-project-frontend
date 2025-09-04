@@ -640,7 +640,7 @@ function App() {
         payloadSize: JSON.stringify(payload).length
       });
 
-      setResponse(prev => prev + '\n📡 Lambda関数で画像分析実行中...\n⏱️ 通常30-60秒程度かかります');
+      setResponse(prev => prev + '\n🧠 Bedrock Vision AIで画像分析実行中...\n⚡ Claude 3 Sonnet による高精度分析（30-60秒）');
 
       const response = await axios.post(API_ENDPOINT, payload, {
         headers: { 
@@ -673,7 +673,7 @@ function App() {
           analysisResult = JSON.stringify(result, null, 2);
         }
 
-        const finalResult = `✅ 画像分析が完了しました！\n\n📄 分析結果:\n${analysisResult}\n\n📊 ファイル処理情報:\n• ファイル名: ${file.name}\n• 処理時間: ${Date.now() - Date.now()}ms\n• 分析タイプ: ${selectedAnalysisType}`;
+        const finalResult = `🎉 Bedrock Vision AI分析完了！\n\n${analysisResult}\n\n📊 処理情報:\n• ファイル名: ${file.name}\n• AI エンジン: Claude 3 Sonnet Vision\n• 分析タイプ: ${selectedAnalysisType}\n\n💡 追加質問がある場合は下の質問欄に入力してください`;
         
         setResponse(finalResult);
         setImageAnalysisResult(analysisResult);
