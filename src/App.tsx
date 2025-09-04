@@ -623,7 +623,21 @@ function App() {
         fileName: file.name, 
         size: file.size, 
         type: file.type,
-        base64Length: base64String.length 
+        base64Length: base64String.length,
+        payloadKeys: Object.keys(payload),
+        analysisType: selectedAnalysisType,
+        hasImageData: !!base64String && base64String.length > 0
+      });
+
+      // ペイロード詳細ログ（最初の100文字のみ）
+      console.log('📷 ペイロード詳細:', {
+        analysisType: payload.analysisType,
+        fileType: payload.fileType,
+        fileName: payload.fileName,
+        mimeType: payload.mimeType,
+        fileSize: payload.fileSize,
+        imageDataPreview: base64String.substring(0, 100) + '...',
+        payloadSize: JSON.stringify(payload).length
       });
 
       setResponse(prev => prev + '\n📡 Lambda関数で画像分析実行中...\n⏱️ 通常30-60秒程度かかります');

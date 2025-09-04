@@ -981,10 +981,23 @@ def lambda_handler(event, context):
     
     # 画像処理の分岐（document分析 または fileType='image'）
     if requested_analysis_type == "document" or data.get("fileType") == "image":
-        image_data = data.get("imageData", "")
-        mime_type = data.get("mimeType", "image/jpeg")
+        # 詳細なデバッグログを追加
+        logger.info(f"🔍 画像処理開始 - analysisType: {requested_analysis_type}, fileType: {data.get('fileType')}")
+        logger.info(f"🔍 データ構造確認 - keys: {list(data.keys())}")
+        
+        # 複数の可能なキーをチェック
+        image_data = (data.get("imageData") or 
+                     data.get("image_data") or 
+                     data.get("data") or 
+                     data.get("base64") or "")
+        
+        mime_type = data.get("mimeType") or data.get("mime_type") or "image/jpeg"
+        
+        logger.info(f"🔍 imageData確認 - exists: {bool(image_data)}, length: {len(str(image_data))}")
+        logger.info(f"🔍 mimeType: {mime_type}")
         
         if not image_data:
+            logger.error(f"❌ 画像データが見つかりません - 受信データ: {json.dumps(data, indent=2)[:500]}...")
             return response_json(400, {
                 "response": {"summary": "画像データが含まれていません", "key_insights": [], "recommendations": []},
                 "format": "json", "message": "Missing image data"

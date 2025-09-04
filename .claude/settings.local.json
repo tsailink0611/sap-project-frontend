@@ -44,7 +44,8 @@
       "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
       "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
       "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
-      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)"
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Bash(npm run deploy:*)"
     ],
     "deny": [],
     "ask": []
