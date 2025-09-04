@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 # ====== ENV ======
-MODEL_ID       = os.environ.get("BEDROCK_MODEL_ID", "us.deepseek.r1-v1:0")
+MODEL_ID       = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")  # 画像対応版
 REGION         = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 DEFAULT_FORMAT = (os.environ.get("DEFAULT_FORMAT", "json") or "json").lower()  # 'json'|'markdown'|'text'
 MAX_TOKENS     = int(os.environ.get("MAX_TOKENS", "8000"))  # 戦略レベル分析用に大幅増加
@@ -24,8 +24,9 @@ def response_json(status: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "headers": {
             "Content-Type": "application/json; charset=utf-8",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source, X-Api-Key, Accept, Accept-Language, Content-Language, Range",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE, PATCH",
+            "Access-Control-Expose-Headers": "Content-Length, Content-Type",
             "Access-Control-Allow-Credentials": "false",
             "Access-Control-Max-Age": "86400"
         },
@@ -754,8 +755,8 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
     try:
         logger.info("🔍 Bedrock Vision API での画像分析を開始")
         
-        # 画像処理は Claude Sonnet 4 を使用（最新・最高性能）
-        vision_model_id = "anthropic.claude-4-sonnet-20250101-v1:0"
+        # 画像処理は最新のClaude 3.5 Sonnet v2を使用（画像分析対応）
+        vision_model_id = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
         
         # カスタムプロンプトがある場合はそれを使用、なければデフォルト
         if custom_prompt.strip():
@@ -833,6 +834,10 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
         # Bedrock Vision APIを呼び出し
         try:
             logger.info("📡 bedrock.invoke_model() を呼び出し中...")
+            logger.info(f"🔧 使用モデル: {vision_model_id}")
+            logger.info(f"🌍 リージョン: {REGION}")
+            logger.info(f"💾 リクエストサイズ: {len(json.dumps(message))} bytes")
+            
             response = bedrock.invoke_model(**message)
             logger.info("✅ bedrock.invoke_model() 成功")
             
@@ -843,6 +848,16 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
         except Exception as api_error:
             logger.error(f"❌ Bedrock Vision API 呼び出しエラー: {str(api_error)}")
             logger.error(f"❌ エラータイプ: {type(api_error).__name__}")
+            logger.error(f"❌ 使用モデル: {vision_model_id}")
+            logger.error(f"❌ リージョン: {REGION}")
+            
+            # 詳細なエラー情報を抽出
+            error_code = getattr(api_error, 'response', {}).get('Error', {}).get('Code', 'Unknown')
+            error_message = getattr(api_error, 'response', {}).get('Error', {}).get('Message', str(api_error))
+            
+            logger.error(f"❌ AWS エラーコード: {error_code}")
+            logger.error(f"❌ AWS エラーメッセージ: {error_message}")
+            
             raise api_error
         
         logger.info("✅ Claude Sonnet 4 Vision からレスポンス受信")
@@ -1105,6 +1120,15 @@ def lambda_handler(event, context):
         
         logger.info(f"🔍 imageData確認 - exists: {bool(image_data)}, length: {len(str(image_data))}")
         logger.info(f"🔍 mimeType: {mime_type}")
+        logger.info(f"🔍 imageData sample: {str(image_data)[:50]}..." if image_data else "🔍 No image data")
+        
+        # Base64データの有効性チェック
+        try:
+            if image_data:
+                base64.b64decode(image_data[:100])  # サンプルデータでテスト
+                logger.info("✅ Base64データは有効です")
+        except Exception as b64_error:
+            logger.error(f"❌ Base64データが無効: {str(b64_error)}")
         
         if not image_data:
             logger.error(f"❌ 画像データが見つかりません - 受信データ: {json.dumps(data, indent=2)[:500]}...")
