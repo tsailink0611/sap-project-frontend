@@ -45,7 +45,22 @@
       "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
       "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
       "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
-      "Bash(npm run deploy:*)"
+      "Bash(npm run deploy:*)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Bash(npx cdk deploy:*)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Bash(npx cdk diff:*)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Bash(aws logs describe-log-streams:*)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Bash(npx cdk output:*)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "Read(c:\\Users\\tsail\\Desktop\\スクリーンショット/**)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
