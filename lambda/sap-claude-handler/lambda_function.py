@@ -754,8 +754,8 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
     try:
         logger.info("🔍 Bedrock Vision API での画像分析を開始")
         
-        # ビジョン対応モデルを使用
-        vision_model_id = "us.anthropic.claude-3-sonnet-20240229-v1:0"
+        # DeepSeek R1モデルを使用（画像対応）
+        vision_model_id = "us.deepseek.r1-v1:0"
         
         # カスタムプロンプトがある場合はそれを使用、なければデフォルト
         if custom_prompt.strip():
@@ -795,13 +795,12 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
         # Base64画像データを準備
         image_bytes = base64.b64decode(image_data)
         
-        # Claude 3用のメッセージ構造
+        # DeepSeek R1用のメッセージ構造
         message = {
             "modelId": vision_model_id,
             "contentType": "application/json",
             "accept": "application/json",
             "body": json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 4000,
                 "temperature": 0.1,
                 "messages": [
