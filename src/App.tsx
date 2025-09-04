@@ -679,6 +679,11 @@ function App() {
         setImageAnalysisResult(analysisResult);
         setIsFileUploaded(true);
         
+        // 画像分析の場合はsalesDataをクリアして競合を避ける
+        setSalesData([]);
+        setShowCharts(false);
+        setShowDataTable(false);
+        
         // SentryにSuccess情報を送信
         captureMessage(`画像分析成功: ${file.name}`, 'info');
       } else {
@@ -1020,6 +1025,12 @@ function App() {
   const handleSubmitJSON = async () => {
     if (!prompt.trim()) return;
 
+    // 画像分析の場合は既に処理済みなのでスキップ
+    if (selectedAnalysisType === 'document' && uploadedImagePreview) {
+      setResponse('📷 画像は既に分析済みです。新しい画像をアップロードするか、別の分析タイプを選択してください。');
+      return;
+    }
+
     setIsLoading(true);         // ← 「AIが生成中」表示ON
     setResponse('');            // 既存表示のクリア
 
@@ -1061,6 +1072,13 @@ function App() {
 
     setIsLoading(true)
     setResponse('')
+
+    // 画像分析の場合は既に処理済みなのでスキップ
+    if (selectedAnalysisType === 'document' && uploadedImagePreview) {
+      setIsLoading(false);
+      setResponse('📷 画像は既に分析済みです。新しい画像をアップロードするか、別の分析タイプを選択してください。');
+      return;
+    }
 
     // デバッグ情報を出力
     console.log('🚀 handleSubmit開始');
@@ -1437,7 +1455,22 @@ ${dataTable}
             return (
               <div
                 key={type.id}
-                onClick={() => isAccessible && setSelectedAnalysisType(type.id)}
+                onClick={() => {
+                  if (isAccessible) {
+                    setSelectedAnalysisType(type.id);
+                    // 分析タイプ変更時に前のデータをクリア
+                    if (type.id === 'document') {
+                      setSalesData([]);
+                      setShowCharts(false);
+                      setShowDataTable(false);
+                    } else {
+                      setUploadedImagePreview(null);
+                      setImageAnalysisResult('');
+                    }
+                    setResponse('');
+                    setIsFileUploaded(false);
+                  }
+                }}
                 style={{
                   padding: '24px',
                   border: `3px solid ${isSelected ? '#667eea' : 'transparent'}`,
