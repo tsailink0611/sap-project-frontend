@@ -24,8 +24,10 @@ def response_json(status: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "headers": {
             "Content-Type": "application/json; charset=utf-8",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-            "Access-Control-Allow-Methods": "OPTIONS,POST"
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
+            "Access-Control-Allow-Credentials": "false",
+            "Access-Control-Max-Age": "86400"
         },
         "body": json.dumps(body, ensure_ascii=False)
     }
@@ -1017,15 +1019,28 @@ def process_sentry_webhook(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 # ====== Handler ======
 def lambda_handler(event, context):
+    # 詳細なデバッグログを追加
+    logger.info("🚀 ======= Lambda Handler 開始 =======")
+    logger.info(f"📍 Request ID: {context.aws_request_id}")
+    logger.info(f"📍 Event keys: {list(event.keys())}")
+    
+    # リクエストの基本情報をログ
+    method = (event.get("requestContext", {}) or {}).get("http", {}).get("method") or event.get("httpMethod", "")
+    origin = (event.get("headers", {}) or {}).get("origin") or (event.get("headers", {}) or {}).get("Origin")
+    
+    logger.info(f"🌐 HTTP Method: {method}")
+    logger.info(f"🌐 Origin: {origin}")
+    logger.info(f"🌐 Headers: {list((event.get('headers', {}) or {}).keys())}")
+    
     # Early echo（必要時のみ）
     echo = _early_echo(event)
     if echo is not None:
         return echo
 
-    # CORS/HTTP method
-    method = (event.get("requestContext", {}) or {}).get("http", {}).get("method") or event.get("httpMethod", "")
+    # CORS/HTTP method - OPTIONS request
     if method == "OPTIONS":
-        return response_json(200, {"ok": True})
+        logger.info("✅ OPTIONS request - CORS preflight 処理")
+        return response_json(200, {"message": "CORS preflight OK", "method": method, "origin": origin})
     if method != "POST":
         return response_json(405, {
             "response": {"summary": "Use POST", "key_insights": [], "recommendations": [], "data_analysis": {"total_records": 0}},
