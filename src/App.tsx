@@ -11,8 +11,8 @@ import { checkSupabaseConfig } from './lib/debug-supabase'
 import { captureError, captureMessage } from './lib/sentry'
 import * as Sentry from '@sentry/react'
 
-// APIエンドポイント設定
-const API_ENDPOINT = "/api/analysis";
+// APIエンドポイント設定 - AWS API Gateway URL
+const API_ENDPOINT = "https://ylgrnwffx6.execute-api.us-east-1.amazonaws.com/prod";
 
 // チャート用の色設定
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
