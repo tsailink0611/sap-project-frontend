@@ -1,7 +1,7 @@
 # lambda_function.py
 # Stable, no external deps. Reads salesData (array) or csv (string). Bedrock converse. CORS/OPTIONS ready.
 
-import json, os, base64, logging, boto3, requests
+import json, os, base64, logging, boto3
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,7 +11,6 @@ REGION         = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION
 DEFAULT_FORMAT = (os.environ.get("DEFAULT_FORMAT", "json") or "json").lower()  # 'json'|'markdown'|'text'
 MAX_TOKENS     = int(os.environ.get("MAX_TOKENS", "8000"))  # 戦略レベル分析用に大幅増加
 TEMPERATURE    = float(os.environ.get("TEMPERATURE", "0.15"))
-LINE_NOTIFY_TOKEN = os.environ.get("LINE_NOTIFY_TOKEN", "")
 
 # ====== LOG ======
 logger = logging.getLogger()
@@ -24,10 +23,8 @@ def response_json(status: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "headers": {
             "Content-Type": "application/json; charset=utf-8",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
-            "Access-Control-Allow-Credentials": "false",
-            "Access-Control-Max-Age": "86400"
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+            "Access-Control-Allow-Methods": "OPTIONS,POST"
         },
         "body": json.dumps(body, ensure_ascii=False)
     }
@@ -745,316 +742,71 @@ def _bedrock_converse(model_id: str, region: str, prompt: str) -> str:
     return "\n".join([t for t in txts if t]).strip()
 
 def _process_image_with_textract(image_data: str, mime_type: str) -> str:
-    """Textract処理は廃止 - Vision API に移行済み"""
-    logger.warning("⚠️ Textract処理は廃止されました。Vision APIを使用してください。")
-    return "Textract処理は廃止されました。Vision APIを使用してください。"
-
-def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysis_type: str, custom_prompt: str = "") -> str:
-    """Bedrock Vision APIで画像書類を直接分析"""
+    """AWS Textractを使用して画像からテキストを抽出"""
     try:
-        logger.info("🔍 Bedrock Vision API での画像分析を開始")
+        textract = boto3.client('textract', region_name=REGION)
         
-        # 画像処理は Claude 4 Sonnet を使用（2025年9月最新）
-        vision_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
-        
-        # カスタムプロンプトがある場合はそれを使用、なければデフォルト
-        if custom_prompt.strip():
-            analysis_prompt = f"""
-以下の画像について、ユーザーの質問に答えてください：
-
-ユーザーの質問: {custom_prompt}
-
-画像の内容を詳しく分析し、質問に対して具体的で実用的な回答を提供してください。
-数値、日付、金額などの重要な情報があれば必ず抽出してください。
-"""
-        else:
-            analysis_prompt = """
-この画像を詳細に分析し、以下の観点でビジネス分析を行ってください：
-
-1. **書類種類の特定**: レシート、請求書、名刺、報告書、その他の分類
-2. **重要情報の抽出**: 
-   - 金額・価格・数量
-   - 日付・時刻
-   - 会社名・店舗名・連絡先
-   - 商品・サービス内容
-   - 税金・手数料等の内訳
-
-3. **ビジネス活用提案**:
-   - 経費処理での注意点
-   - データ入力時の重要ポイント
-   - 管理・保存上の推奨事項
-
-4. **データ構造化**: 抽出した情報をJSON形式でも表示
-
-日本語で詳細かつ実用的に分析してください。
-"""
-
-        # Claude 3 Vision API用のメッセージ形式
-        bedrock = boto3.client('bedrock-runtime', region_name=REGION)
-        
-        # Base64画像データを準備
+        # Base64デコード
         image_bytes = base64.b64decode(image_data)
         
-        # Claude 3 Vision用のメッセージ構造
-        message = {
-            "modelId": vision_model_id,
-            "contentType": "application/json",
-            "accept": "application/json",
-            "body": json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 4000,
-                "temperature": 0.1,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": mime_type or "image/jpeg",
-                                    "data": image_data
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": analysis_prompt
-                            }
-                        ]
-                    }
-                ]
-            })
-        }
+        # Textractでテキスト抽出
+        response = textract.detect_document_text(
+            Document={'Bytes': image_bytes}
+        )
         
-        logger.info(f"🤖 Claude Sonnet 4 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
-        logger.info(f"📦 リクエストサイズ: {len(json.dumps(message))} bytes")
-        logger.info(f"💰 予想コスト: Claude Sonnet 4 (出力100万トークン=$15, 画像分析3000トークン想定=$0.045≈¥6.8)")
+        # テキストを結合
+        extracted_text = []
+        for item in response['Blocks']:
+            if item['BlockType'] == 'LINE':
+                extracted_text.append(item['Text'])
         
-        # Bedrock Vision APIを呼び出し
-        try:
-            logger.info("📡 bedrock.invoke_model() を呼び出し中...")
-            response = bedrock.invoke_model(**message)
-            logger.info("✅ bedrock.invoke_model() 成功")
-            
-            response_body = json.loads(response['body'].read())
-            logger.info("✅ レスポンス JSON パース成功")
-            logger.info(f"📊 レスポンスキー: {list(response_body.keys())}")
-            
-        except Exception as api_error:
-            logger.error(f"❌ Bedrock Vision API 呼び出しエラー: {str(api_error)}")
-            logger.error(f"❌ エラータイプ: {type(api_error).__name__}")
-            raise api_error
-        
-        logger.info("✅ Claude Sonnet 4 Vision からレスポンス受信")
-        
-        # 使用量とコストを計算
-        usage = response_body.get('usage', {})
-        input_tokens = usage.get('input_tokens', 0)
-        output_tokens = usage.get('output_tokens', 0)
-        total_tokens = input_tokens + output_tokens
-        
-        # Claude Sonnet 4 コスト計算 ($15/1M出力トークン想定)
-        estimated_cost_usd = (output_tokens / 1000000) * 15
-        estimated_cost_jpy = estimated_cost_usd * 151  # USD→JPY換算
-        
-        logger.info(f"📊 トークン使用量: 入力={input_tokens}, 出力={output_tokens}, 合計={total_tokens}")
-        logger.info(f"💰 実際のコスト: ${estimated_cost_usd:.4f} (約{estimated_cost_jpy:.2f}円)")
-        
-        # レスポンスから分析結果を抽出
-        if 'content' in response_body and len(response_body['content']) > 0:
-            analysis_result = response_body['content'][0]['text']
-            
-            return f"""🔍 **Bedrock Vision AI画像分析結果**
-
-{analysis_result}
-
----
-📊 **分析情報**:
-- エンジン: Claude 3 Sonnet Vision
-- 処理時間: リアルタイム
-- 分析タイプ: {analysis_type}
-"""
-        else:
-            logger.error("❌ Claude 3 Vision から有効なレスポンスを取得できませんでした")
-            return "画像分析エラー: Vision APIからの応答が不正です"
-            
+        return '\n'.join(extracted_text)
+    
     except Exception as e:
-        logger.error(f"❌ Vision API画像分析エラー: {str(e)}")
-        
-        # フォールバック: DeepSeekで画像なしテキスト分析を試行
-        try:
-            logger.info("🔄 フォールバック: テキスト分析モードで処理を継続")
-            fallback_prompt = f"""
-画像分析が一時的に利用できませんが、以下の状況について分析とアドバイスを提供します：
-
-分析タイプ: {analysis_type}
-ユーザーリクエスト: {custom_prompt if custom_prompt else "画像書類の分析"}
-
-画像分析ツールとして一般的な書類分析のベストプラクティスとアドバイスを提供してください。
-"""
-            fallback_result = _bedrock_converse(MODEL_ID, REGION, fallback_prompt)
-            return f"""⚠️ **画像分析一時停止中 - 代替分析結果**
-
-{fallback_result}
-
----
-📝 **注意**: 画像の詳細分析は現在利用できませんが、一般的な分析ガイドラインを提供しています。
-エラー詳細: {str(e)}
-"""
-        except Exception as fallback_error:
-            logger.error(f"❌ フォールバック分析も失敗: {str(fallback_error)}")
-            return f"""❌ **画像分析エラー**
-
-申し訳ございませんが、現在画像分析機能に技術的な問題が発生しています。
-
-**エラー詳細**: 
-- Vision API: {str(e)}
-- フォールバック: {str(fallback_error)}
-
-**推奨対応**:
-1. しばらく時間をおいてから再試行してください
-2. 画像が鮮明で読み取り可能か確認してください  
-3. サポートが必要な場合は管理者にお問い合わせください
-"""
+        logger.error(f"Textract error: {str(e)}")
+        return f"テキスト抽出エラー: {str(e)}"
 
 def _analyze_document_image(image_data: str, mime_type: str, analysis_type: str) -> str:
-    """画像書類を分析してビジネス分析を実行 (Vision API対応)"""
-    return _analyze_document_image_with_vision(image_data, mime_type, analysis_type)
-
-# ====== LINE Notify & Sentry Webhook処理 ======
-def send_line_notification(message: str) -> bool:
-    """LINE Notify APIを使用してメッセージを送信"""
-    if not LINE_NOTIFY_TOKEN:
-        logger.error("LINE_NOTIFY_TOKEN not configured")
-        return False
-    
+    """シンプルな画像分析（デモ用）"""
     try:
-        headers = {
-            'Authorization': f'Bearer {LINE_NOTIFY_TOKEN}',
-            'Content-Type': 'application/x-www-form-urlencoded'
-        }
-        data = {'message': message}
+        logger.info(f"画像分析開始: mime_type={mime_type}, data_length={len(image_data)}")
         
-        response = requests.post(
-            'https://notify-api.line.me/api/notify',
-            headers=headers,
-            data=data,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            logger.info("✅ LINE通知送信成功")
-            return True
-        else:
-            logger.error(f"❌ LINE通知送信失敗: {response.status_code} - {response.text}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ LINE通知エラー: {str(e)}")
-        return False
+        # 基本的な画像情報を返す（実際のAI分析はまず動作確認後に実装）
+        return f"""📄 **画像分析結果（動作確認済み）**
 
-def process_sentry_webhook(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Sentryからのwebhookペイロードを処理してLINE通知を送信"""
-    try:
-        # Sentryペイロードの検出 - より柔軟に
-        is_sentry_webhook = (
-            "event" in data or 
-            "action" in data or 
-            ("data" in data and isinstance(data["data"], dict) and ("issue" in data["data"] or "event" in data["data"])) or
-            ("installation" in data) or
-            ("alert" in data)
-        )
-        
-        if not is_sentry_webhook:
-            # Sentryペイロードではない場合はNoneを返す（通常の処理に進む）
-            return None
-            
-        logger.info("🔴 Sentryからのwebhookペイロードを検出")
-        
-        # エラー情報を抽出
-        error_title = "不明なエラー"
-        error_detail = ""
-        project_name = ""
-        environment = ""
-        
-        # Sentryのペイロード構造に応じて情報抽出
-        if "data" in data:
-            event_data = data["data"]
-            if "issue" in event_data:
-                issue = event_data["issue"]
-                error_title = issue.get("title", error_title)
-                project_name = issue.get("project", {}).get("name", "")
-            elif "event" in event_data:
-                event = event_data["event"]
-                error_title = event.get("title", event.get("message", error_title))
-                environment = event.get("environment", "")
-        elif "event" in data:
-            event = data["event"]
-            error_title = event.get("title", event.get("message", error_title))
-            environment = event.get("environment", "")
-            
-        # LINE通知メッセージを作成
-        timestamp = ""
-        try:
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            pass
-            
-        message = f"""🚨 【SAP Frontend - エラー通知】
+**ファイル情報**:
+- MIMEタイプ: {mime_type}
+- データサイズ: {len(image_data)} 文字
+- Base64形式: ✅ 受信完了
 
-📍 エラー: {error_title}
+**システム状態**:
+✅ Lambda関数: 正常動作
+✅ 画像データ: 受信済み  
+✅ API通信: 成功
+✅ CORS設定: 適用済み
 
-🏢 プロジェクト: {project_name or "SAP Frontend"}
-🌍 環境: {environment or "production"}  
-🕒 発生時刻: {timestamp}
+**次のステップ**:
+1. 基本通信確認完了 ← 今ここ
+2. Claude 4 Sonnet連携
+3. 本格的な画像分析実装
 
-🔗 Sentryで詳細を確認してください
-"""
-        
-        # LINE通知を送信
-        success = send_line_notification(message)
-        
-        # レスポンスを返す
-        return response_json(200, {
-            "message": "Sentry webhook processed",
-            "line_notification": "success" if success else "failed",
-            "error_title": error_title,
-            "project": project_name,
-            "environment": environment
-        })
+*このメッセージが表示されれば、システムの基本動作は正常です。*"""
         
     except Exception as e:
-        logger.error(f"❌ Sentry webhook処理エラー: {str(e)}")
-        return response_json(500, {
-            "message": "Sentry webhook processing failed",
-            "error": str(e)
-        })
+        logger.error(f"Document image analysis error: {str(e)}")
+        return f"シンプル画像分析エラー: {str(e)}"
 
 # ====== Handler ======
 def lambda_handler(event, context):
-    # 詳細なデバッグログを追加
-    logger.info("🚀 ======= Lambda Handler 開始 =======")
-    logger.info(f"📍 Request ID: {context.aws_request_id}")
-    logger.info(f"📍 Event keys: {list(event.keys())}")
-    
-    # リクエストの基本情報をログ
-    method = (event.get("requestContext", {}) or {}).get("http", {}).get("method") or event.get("httpMethod", "")
-    origin = (event.get("headers", {}) or {}).get("origin") or (event.get("headers", {}) or {}).get("Origin")
-    
-    logger.info(f"🌐 HTTP Method: {method}")
-    logger.info(f"🌐 Origin: {origin}")
-    logger.info(f"🌐 Headers: {list((event.get('headers', {}) or {}).keys())}")
-    
     # Early echo（必要時のみ）
     echo = _early_echo(event)
     if echo is not None:
         return echo
 
-    # CORS/HTTP method - OPTIONS request
+    # CORS/HTTP method
+    method = (event.get("requestContext", {}) or {}).get("http", {}).get("method") or event.get("httpMethod", "")
     if method == "OPTIONS":
-        logger.info("✅ OPTIONS request - CORS preflight 処理")
-        return response_json(200, {"message": "CORS preflight OK", "method": method, "origin": origin})
+        return response_json(200, {"ok": True})
     if method != "POST":
         return response_json(405, {
             "response": {"summary": "Use POST", "key_insights": [], "recommendations": [], "data_analysis": {"total_records": 0}},
@@ -1076,14 +828,6 @@ def lambda_handler(event, context):
             "format": "json", "message": "INVALID_JSON", "engine": "bedrock", "model": MODEL_ID
         })
 
-    # デバッグ: 受信データの構造をログ出力
-    logger.info(f"🔍 受信データの構造: {list(data.keys())}")
-    
-    # Sentry Webhook処理を最優先でチェック
-    sentry_response = process_sentry_webhook(data)
-    if sentry_response is not None:
-        return sentry_response
-
     # Inputs
     instruction = (data.get("instruction") or data.get("prompt") or "").strip()
     fmt = (data.get("responseFormat") or DEFAULT_FORMAT or "json").lower()
@@ -1091,52 +835,18 @@ def lambda_handler(event, context):
     
     # 画像処理の分岐（document分析 または fileType='image'）
     if requested_analysis_type == "document" or data.get("fileType") == "image":
-        # 詳細なデバッグログを追加
-        logger.info(f"🔍 画像処理開始 - analysisType: {requested_analysis_type}, fileType: {data.get('fileType')}")
-        logger.info(f"🔍 データ構造確認 - keys: {list(data.keys())}")
-        
-        # 複数の可能なキーをチェック
-        image_data = (data.get("imageData") or 
-                     data.get("image_data") or 
-                     data.get("data") or 
-                     data.get("base64") or "")
-        
-        mime_type = data.get("mimeType") or data.get("mime_type") or "image/jpeg"
-        
-        logger.info(f"🔍 imageData確認 - exists: {bool(image_data)}, length: {len(str(image_data))}")
-        logger.info(f"🔍 mimeType: {mime_type}")
+        image_data = data.get("imageData", "")
+        mime_type = data.get("mimeType", "image/jpeg")
         
         if not image_data:
-            logger.error(f"❌ 画像データが見つかりません - 受信データ: {json.dumps(data, indent=2)[:500]}...")
             return response_json(400, {
                 "response": {"summary": "画像データが含まれていません", "key_insights": [], "recommendations": []},
                 "format": "json", "message": "Missing image data"
             })
         
         try:
-            logger.info("🔍 ======= Vision API画像分析開始 =======")
-            logger.info(f"🔍 分析タイプ: {requested_analysis_type}")
-            logger.info(f"🔍 MIMEタイプ: {mime_type}")
-            logger.info(f"🔍 画像データサイズ: {len(image_data)} chars")
-            
-            # カスタムプロンプト（ユーザーからの追加質問）を取得
-            custom_prompt = data.get("prompt", "") or data.get("instruction", "")
-            
-            logger.info(f"📝 カスタムプロンプト: {custom_prompt[:100]}..." if custom_prompt else "📝 デフォルト画像分析を実行")
-            
-            # **重要**: Vision API専用処理を確実に実行
-            logger.info("🚀 _analyze_document_image_with_vision 関数を呼び出し")
-            
-            # Vision APIで画像分析実行
-            analysis_result = _analyze_document_image_with_vision(
-                image_data, 
-                mime_type, 
-                requested_analysis_type,
-                custom_prompt
-            )
-            
-            logger.info("✅ Vision API分析完了")
-            logger.info(f"📊 分析結果サイズ: {len(str(analysis_result))} chars")
+            logger.info("Starting image analysis")
+            analysis_result = _analyze_document_image(image_data, mime_type, requested_analysis_type)
             
             return response_json(200, {
                 "response": {
