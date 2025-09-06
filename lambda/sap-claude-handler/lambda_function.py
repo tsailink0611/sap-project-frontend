@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 # ====== ENV ======
-MODEL_ID       = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")  # 画像対応版
+MODEL_ID       = os.environ.get("BEDROCK_MODEL_ID", "us.deepseek.r1-v1:0")
 REGION         = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 DEFAULT_FORMAT = (os.environ.get("DEFAULT_FORMAT", "json") or "json").lower()  # 'json'|'markdown'|'text'
 MAX_TOKENS     = int(os.environ.get("MAX_TOKENS", "8000"))  # 戦略レベル分析用に大幅増加
@@ -24,9 +24,8 @@ def response_json(status: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "headers": {
             "Content-Type": "application/json; charset=utf-8",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source, X-Api-Key, Accept, Accept-Language, Content-Language, Range",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE, PATCH",
-            "Access-Control-Expose-Headers": "Content-Length, Content-Type",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
             "Access-Control-Allow-Credentials": "false",
             "Access-Control-Max-Age": "86400"
         },
@@ -755,7 +754,7 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
     try:
         logger.info("🔍 Bedrock Vision API での画像分析を開始")
         
-        # 画像処理は Claude 4 Sonnet を使用（最新・最高性能 2025年9月対応）
+        # 画像処理は Claude 4 Sonnet を使用（2025年9月最新）
         vision_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
         
         # カスタムプロンプトがある場合はそれを使用、なければデフォルト
@@ -827,17 +826,13 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
             })
         }
         
-        logger.info(f"🤖 Claude 4 Sonnet Vision に画像分析リクエスト送信 (model: {vision_model_id})")
+        logger.info(f"🤖 Claude Sonnet 4 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
         logger.info(f"📦 リクエストサイズ: {len(json.dumps(message))} bytes")
-        logger.info(f"💰 予想コスト: Claude 4 Sonnet (1M context, 高性能画像分析, 2025年最新モデル)")
+        logger.info(f"💰 予想コスト: Claude Sonnet 4 (出力100万トークン=$15, 画像分析3000トークン想定=$0.045≈¥6.8)")
         
         # Bedrock Vision APIを呼び出し
         try:
             logger.info("📡 bedrock.invoke_model() を呼び出し中...")
-            logger.info(f"🔧 使用モデル: {vision_model_id}")
-            logger.info(f"🌍 リージョン: {REGION}")
-            logger.info(f"💾 リクエストサイズ: {len(json.dumps(message))} bytes")
-            
             response = bedrock.invoke_model(**message)
             logger.info("✅ bedrock.invoke_model() 成功")
             
@@ -848,19 +843,9 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
         except Exception as api_error:
             logger.error(f"❌ Bedrock Vision API 呼び出しエラー: {str(api_error)}")
             logger.error(f"❌ エラータイプ: {type(api_error).__name__}")
-            logger.error(f"❌ 使用モデル: {vision_model_id}")
-            logger.error(f"❌ リージョン: {REGION}")
-            
-            # 詳細なエラー情報を抽出
-            error_code = getattr(api_error, 'response', {}).get('Error', {}).get('Code', 'Unknown')
-            error_message = getattr(api_error, 'response', {}).get('Error', {}).get('Message', str(api_error))
-            
-            logger.error(f"❌ AWS エラーコード: {error_code}")
-            logger.error(f"❌ AWS エラーメッセージ: {error_message}")
-            
             raise api_error
         
-        logger.info("✅ Claude 4 Sonnet Vision からレスポンス受信")
+        logger.info("✅ Claude Sonnet 4 Vision からレスポンス受信")
         
         # 使用量とコストを計算
         usage = response_body.get('usage', {})
@@ -1066,24 +1051,10 @@ def lambda_handler(event, context):
     if echo is not None:
         return echo
 
-    # CORS/HTTP method - OPTIONS request (Preflight対応強化)
+    # CORS/HTTP method - OPTIONS request
     if method == "OPTIONS":
         logger.info("✅ OPTIONS request - CORS preflight 処理")
-        logger.info(f"🌐 Preflight Headers: {list((event.get('headers', {}) or {}).keys())}")
-        
-        # 特別なCORS preflight レスポンス
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE, PATCH",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source, X-Api-Key, Accept, Accept-Language, Content-Language, Range, Access-Control-Request-Method, Access-Control-Request-Headers",
-                "Access-Control-Max-Age": "86400",
-                "Access-Control-Allow-Credentials": "false",
-                "Content-Type": "application/json"
-            },
-            "body": json.dumps({"message": "CORS preflight OK", "method": method, "origin": origin})
-        }
+        return response_json(200, {"message": "CORS preflight OK", "method": method, "origin": origin})
     if method != "POST":
         return response_json(405, {
             "response": {"summary": "Use POST", "key_insights": [], "recommendations": [], "data_analysis": {"total_records": 0}},
@@ -1107,13 +1078,6 @@ def lambda_handler(event, context):
 
     # デバッグ: 受信データの構造をログ出力
     logger.info(f"🔍 受信データの構造: {list(data.keys())}")
-    logger.info(f"🔍 受信データ詳細: {json.dumps(data, indent=2)[:1000]}...")
-    
-    # リクエストヘッダーも確認
-    headers = event.get("headers", {}) or {}
-    logger.info(f"🔍 リクエストヘッダー: {list(headers.keys())}")
-    logger.info(f"🔍 Content-Type: {headers.get('content-type', 'Not Set')}")
-    logger.info(f"🔍 X-Request-Source: {headers.get('x-request-source', 'Not Set')}")
     
     # Sentry Webhook処理を最優先でチェック
     sentry_response = process_sentry_webhook(data)
@@ -1141,15 +1105,6 @@ def lambda_handler(event, context):
         
         logger.info(f"🔍 imageData確認 - exists: {bool(image_data)}, length: {len(str(image_data))}")
         logger.info(f"🔍 mimeType: {mime_type}")
-        logger.info(f"🔍 imageData sample: {str(image_data)[:50]}..." if image_data else "🔍 No image data")
-        
-        # Base64データの有効性チェック
-        try:
-            if image_data:
-                base64.b64decode(image_data[:100])  # サンプルデータでテスト
-                logger.info("✅ Base64データは有効です")
-        except Exception as b64_error:
-            logger.error(f"❌ Base64データが無効: {str(b64_error)}")
         
         if not image_data:
             logger.error(f"❌ 画像データが見つかりません - 受信データ: {json.dumps(data, indent=2)[:500]}...")
@@ -1194,25 +1149,10 @@ def lambda_handler(event, context):
             })
             
         except Exception as e:
-            logger.error(f"❌ Image analysis critical error: {str(e)}")
-            logger.error(f"❌ Error type: {type(e).__name__}")
-            logger.error(f"❌ Error args: {e.args}")
-            import traceback
-            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-            
-            # 詳細なエラー情報をレスポンスに含める
-            error_details = {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "vision_model_id": vision_model_id if 'vision_model_id' in locals() else "未設定",
-                "image_data_present": bool(image_data) if 'image_data' in locals() else False,
-                "mime_type": mime_type if 'mime_type' in locals() else "未設定"
-            }
-            
+            logger.error(f"Image analysis error: {str(e)}")
             return response_json(500, {
                 "response": {"summary": f"画像分析エラー: {str(e)}", "key_insights": [], "recommendations": []},
-                "format": "json", "message": "Image analysis failed",
-                "error_details": error_details
+                "format": "json", "message": "Image analysis failed"
             })
     
     # FORCE_JA option
