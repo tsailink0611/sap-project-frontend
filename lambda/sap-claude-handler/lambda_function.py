@@ -1107,6 +1107,13 @@ def lambda_handler(event, context):
 
     # デバッグ: 受信データの構造をログ出力
     logger.info(f"🔍 受信データの構造: {list(data.keys())}")
+    logger.info(f"🔍 受信データ詳細: {json.dumps(data, indent=2)[:1000]}...")
+    
+    # リクエストヘッダーも確認
+    headers = event.get("headers", {}) or {}
+    logger.info(f"🔍 リクエストヘッダー: {list(headers.keys())}")
+    logger.info(f"🔍 Content-Type: {headers.get('content-type', 'Not Set')}")
+    logger.info(f"🔍 X-Request-Source: {headers.get('x-request-source', 'Not Set')}")
     
     # Sentry Webhook処理を最優先でチェック
     sentry_response = process_sentry_webhook(data)
@@ -1187,10 +1194,25 @@ def lambda_handler(event, context):
             })
             
         except Exception as e:
-            logger.error(f"Image analysis error: {str(e)}")
+            logger.error(f"❌ Image analysis critical error: {str(e)}")
+            logger.error(f"❌ Error type: {type(e).__name__}")
+            logger.error(f"❌ Error args: {e.args}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            
+            # 詳細なエラー情報をレスポンスに含める
+            error_details = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "vision_model_id": vision_model_id if 'vision_model_id' in locals() else "未設定",
+                "image_data_present": bool(image_data) if 'image_data' in locals() else False,
+                "mime_type": mime_type if 'mime_type' in locals() else "未設定"
+            }
+            
             return response_json(500, {
                 "response": {"summary": f"画像分析エラー: {str(e)}", "key_insights": [], "recommendations": []},
-                "format": "json", "message": "Image analysis failed"
+                "format": "json", "message": "Image analysis failed",
+                "error_details": error_details
             })
     
     # FORCE_JA option
