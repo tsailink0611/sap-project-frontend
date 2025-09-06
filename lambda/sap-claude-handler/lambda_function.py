@@ -755,8 +755,8 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
     try:
         logger.info("🔍 Bedrock Vision API での画像分析を開始")
         
-        # 画像処理は最新のClaude 3.5 Sonnet v2を使用（画像分析対応）
-        vision_model_id = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+        # 画像処理は Claude 4 Sonnet を使用（最新・最高性能 2025年9月対応）
+        vision_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
         
         # カスタムプロンプトがある場合はそれを使用、なければデフォルト
         if custom_prompt.strip():
@@ -827,9 +827,9 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
             })
         }
         
-        logger.info(f"🤖 Claude Sonnet 4 Vision に画像分析リクエスト送信 (model: {vision_model_id})")
+        logger.info(f"🤖 Claude 4 Sonnet Vision に画像分析リクエスト送信 (model: {vision_model_id})")
         logger.info(f"📦 リクエストサイズ: {len(json.dumps(message))} bytes")
-        logger.info(f"💰 予想コスト: Claude Sonnet 4 (出力100万トークン=$15, 画像分析3000トークン想定=$0.045≈¥6.8)")
+        logger.info(f"💰 予想コスト: Claude 4 Sonnet (1M context, 高性能画像分析, 2025年最新モデル)")
         
         # Bedrock Vision APIを呼び出し
         try:
@@ -860,7 +860,7 @@ def _analyze_document_image_with_vision(image_data: str, mime_type: str, analysi
             
             raise api_error
         
-        logger.info("✅ Claude Sonnet 4 Vision からレスポンス受信")
+        logger.info("✅ Claude 4 Sonnet Vision からレスポンス受信")
         
         # 使用量とコストを計算
         usage = response_body.get('usage', {})
@@ -1066,10 +1066,24 @@ def lambda_handler(event, context):
     if echo is not None:
         return echo
 
-    # CORS/HTTP method - OPTIONS request
+    # CORS/HTTP method - OPTIONS request (Preflight対応強化)
     if method == "OPTIONS":
         logger.info("✅ OPTIONS request - CORS preflight 処理")
-        return response_json(200, {"message": "CORS preflight OK", "method": method, "origin": origin})
+        logger.info(f"🌐 Preflight Headers: {list((event.get('headers', {}) or {}).keys())}")
+        
+        # 特別なCORS preflight レスポンス
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE, PATCH",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Request-Source, X-Api-Key, Accept, Accept-Language, Content-Language, Range, Access-Control-Request-Method, Access-Control-Request-Headers",
+                "Access-Control-Max-Age": "86400",
+                "Access-Control-Allow-Credentials": "false",
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({"message": "CORS preflight OK", "method": method, "origin": origin})
+        }
     if method != "POST":
         return response_json(405, {
             "response": {"summary": "Use POST", "key_insights": [], "recommendations": [], "data_analysis": {"total_records": 0}},
