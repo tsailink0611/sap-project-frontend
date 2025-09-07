@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts bin/cdk-minimal.ts",
+  "app": "npx ts-node --prefer-ts-exts bin/sap-complete.ts",
   "watch": {
     "include": [
       "**"

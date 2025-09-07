@@ -4,7 +4,6 @@ import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import ColumnMappingLearning from './components/ColumnMappingLearning'
-import SimpleAuth from './components/SimpleAuth'
 import { ErrorBoundary, SentryErrorBoundary } from './components/ErrorBoundary'
 import { saveFormatProfile, getFormatProfile } from './lib/supabase'
 import { checkSupabaseConfig } from './lib/debug-supabase'
@@ -205,9 +204,15 @@ const analyzeSalesData = (data: SalesData[]) => {
 };
 
 function App() {
-  // 認証状態
-  const [user, setUser] = useState<User | null>(null)
-  const [isAuthenticating, setIsAuthenticating] = useState(true)
+  // デフォルトユーザー（認証なし）
+  const [user] = useState<User>({
+    id: 'default',
+    name: 'ユーザー',
+    company: 'SAP Strategic AI Platform',
+    usageCount: 0,
+    usageLimit: 999
+  })
+  const [isAuthenticating] = useState(false)
   
   const [prompt, setPrompt] = useState('')
   const [response, setResponse] = useState('')
@@ -224,46 +229,9 @@ function App() {
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null)
   const [imageAnalysisResult, setImageAnalysisResult] = useState<string>('')
 
-  // 認証チェック（ページ読み込み時）
-  useEffect(() => {
-    // 開発環境では認証をスキップ
-    const isProduction = import.meta.env.PROD
-    if (!isProduction) {
-      // 開発用のデフォルトユーザー
-      const devUser: User = {
-        id: 'dev',
-        name: '開発者',
-        company: 'ローカル開発',
-        usageCount: 0,
-        usageLimit: 999
-      }
-      setUser(devUser)
-      setIsAuthenticating(false)
-      return
-    }
 
-    // 本番環境では通常の認証処理
-    const savedUser = localStorage.getItem('auth_user')
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser))
-      } catch (error) {
-        console.error('認証情報の読み込みエラー:', error)
-        localStorage.removeItem('auth_user')
-      }
-    }
-    setIsAuthenticating(false)
-  }, [])
-
-  // ログイン処理
-  const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser)
-  }
-
-  // ログアウト処理
+  // ログアウト処理（リセットのみ）
   const handleLogout = () => {
-    setUser(null)
-    localStorage.removeItem('auth_user')
     // 状態をリセット
     setResponse('')
     setSalesData([])
@@ -1269,12 +1237,7 @@ ${dataTable}
     )
   }
 
-  // 未認証の場合ログイン画面
-  if (!user) {
-    return <SimpleAuth onLogin={handleLogin} />
-  }
-
-  // 認証済みの場合メインアプリ
+  // メインアプリ
   return (
     <SentryErrorBoundary>
       <div style={{

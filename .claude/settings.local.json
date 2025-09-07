@@ -52,7 +52,9 @@
       "Bash(cdk:*)",
       "Bash(aws cloudformation:*)",
       "Bash(npx cdk deploy:*)",
-      "Bash(aws apigateway:*)"
+      "Bash(aws apigateway:*)",
+      "Bash(aws amplify start-job:*)",
+      "Bash(aws amplify get-job:*)"
     ],
     "deny": [],
     "ask": []
