@@ -1,0 +1,219 @@
+name: Deploy SAP Strategic AI Platform
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: 18
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm run test -- --coverage --watchAll=false
+
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+          retention-days: 7
+
+  deploy-infrastructure:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      api-url: ${{ steps.deploy-cdk.outputs.api-url }}
+      website-url: ${{ steps.deploy-cdk.outputs.website-url }}
+      s3-bucket: ${{ steps.deploy-cdk.outputs.s3-bucket }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install CDK dependencies
+        working-directory: cdk
+        run: npm ci
+
+      - name: Deploy CDK Stack
+        id: deploy-cdk
+        working-directory: cdk
+        run: |
+          cdk deploy --require-approval never --outputs-file outputs.json
+          
+          # Extract outputs
+          API_URL=$(cat outputs.json | jq -r '.CdkStack.ApiUrl // empty')
+          WEBSITE_URL=$(cat outputs.json | jq -r '.CdkStack.WebsiteURL // empty')
+          S3_BUCKET=$(cat outputs.json | jq -r '.CdkStack.S3BucketName // empty')
+          
+          echo "api-url=$API_URL" >> $GITHUB_OUTPUT
+          echo "website-url=$WEBSITE_URL" >> $GITHUB_OUTPUT
+          echo "s3-bucket=$S3_BUCKET" >> $GITHUB_OUTPUT
+          
+          echo "🚀 Infrastructure deployed successfully!"
+          echo "API URL: $API_URL"
+          echo "Website URL: $WEBSITE_URL"
+          echo "S3 Bucket: $S3_BUCKET"
+        env:
+          LINE_NOTIFY_TOKEN: ${{ secrets.LINE_NOTIFY_TOKEN }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+
+  deploy-frontend:
+    needs: [build-and-test, deploy-infrastructure]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://${{ needs.deploy-infrastructure.outputs.s3-bucket }} \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.html" \
+            --exclude "*.json"
+          
+          # HTML files with no-cache for SPA routing
+          aws s3 sync dist/ s3://${{ needs.deploy-infrastructure.outputs.s3-bucket }} \
+            --delete \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --exclude "*" \
+            --include "*.html" \
+            --include "*.json"
+
+      - name: Invalidate CloudFront
+        run: |
+          # Extract distribution ID from CloudFormation stack
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name CdkStack \
+            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
+            --output text)
+          
+          if [ "$DISTRIBUTION_ID" != "None" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id $DISTRIBUTION_ID \
+              --paths "/*"
+            echo "🔄 CloudFront invalidation initiated"
+          else
+            echo "⚠️ Distribution ID not found in stack outputs"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Website URL**: ${{ needs.deploy-infrastructure.outputs.website-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **API URL**: ${{ needs.deploy-infrastructure.outputs.api-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **S3 Bucket**: ${{ needs.deploy-infrastructure.outputs.s3-bucket }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Website](${{ needs.deploy-infrastructure.outputs.website-url }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [AWS Console](https://console.aws.amazon.com/cloudformation/home?region=${{ env.AWS_REGION }})" >> $GITHUB_STEP_SUMMARY
+
+  notification:
+    needs: [deploy-infrastructure, deploy-frontend]
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Send success notification
+        if: needs.deploy-infrastructure.result == 'success' && needs.deploy-frontend.result == 'success'
+        run: |
+          curl -X POST https://notify-api.line.me/api/notify \
+            -H "Authorization: Bearer ${{ secrets.LINE_NOTIFY_TOKEN }}" \
+            -F "message=🎉 SAP Strategic AI Platform デプロイ成功!
+
+          🌐 Website: ${{ needs.deploy-infrastructure.outputs.website-url }}
+          🔗 API: ${{ needs.deploy-infrastructure.outputs.api-url }}
+          📦 Commit: ${{ github.sha }}
+          👤 Author: ${{ github.actor }}
+
+          #Deployment #Success"
+
+      - name: Send failure notification
+        if: needs.deploy-infrastructure.result == 'failure' || needs.deploy-frontend.result == 'failure'
+        run: |
+          curl -X POST https://notify-api.line.me/api/notify \
+            -H "Authorization: Bearer ${{ secrets.LINE_NOTIFY_TOKEN }}" \
+            -F "message=🚨 SAP Strategic AI Platform デプロイ失敗
+
+          ❌ Infrastructure: ${{ needs.deploy-infrastructure.result }}
+          ❌ Frontend: ${{ needs.deploy-frontend.result }}
+          📦 Commit: ${{ github.sha }}
+          👤 Author: ${{ github.actor }}
+          
+          🔗 Details: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          #Deployment #Failure"

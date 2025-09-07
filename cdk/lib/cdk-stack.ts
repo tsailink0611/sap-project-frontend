@@ -48,6 +48,19 @@ export class CdkStack extends cdk.Stack {
       description: 'SAP Frontend OAC for S3',
     });
 
+    // CloudWatch Logs用IAMロール作成 (logging無効化のためコメントアウト)
+    // const apiGatewayCloudWatchRole = new iam.Role(this, 'ApiGatewayCloudWatchLogsRole', {
+    //   assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+    //   managedPolicies: [
+    //     iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonAPIGatewayPushToCloudWatchLogs'),
+    //   ],
+    // });
+
+    // API Gateway Account設定（CloudWatch Logs用） (logging無効化のためコメントアウト)
+    // const account = new apigateway.CfnAccount(this, 'ApiGatewayAccount', {
+    //   cloudWatchRoleArn: apiGatewayCloudWatchRole.roleArn,
+    // });
+
     // API Gateway（CloudFrontより前に定義）
     const api = new apigateway.RestApi(this, 'SapFrontendApi', {
       restApiName: 'SAP Frontend API',
@@ -61,11 +74,14 @@ export class CdkStack extends cdk.Stack {
         stageName: 'prod',
         throttlingBurstLimit: 1000,
         throttlingRateLimit: 500,
-        loggingLevel: apigateway.MethodLoggingLevel.ERROR,
+        loggingLevel: apigateway.MethodLoggingLevel.OFF,
         dataTraceEnabled: false,
         metricsEnabled: true,
       },
     });
+
+    // API Gatewayデプロイメントが Account 設定の後に実行されるよう依存関係を設定 (logging無効化のためコメントアウト)
+    // api.node.addDependency(account);
 
     // CloudFrontディストリビューション
     const distribution = new cloudfront.Distribution(this, 'SapFrontendDistribution', {
@@ -107,6 +123,13 @@ export class CdkStack extends cdk.Stack {
     // 2. Lambda API関数とAPI Gateway
     // ==================================================
     
+    // Sentry-LINE連携Lambda関数のロググループ
+    const sentryLogGroup = new logs.LogGroup(this, 'SentryLineLambdaLogGroup', {
+      logGroupName: '/aws/lambda/sap-sentry-line-webhook',
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // Sentry-LINE連携Lambda関数
     const sentryLineLambda = new lambda.Function(this, 'SentryLineWebhook', {
       functionName: 'sap-sentry-line-webhook',
@@ -118,8 +141,15 @@ export class CdkStack extends cdk.Stack {
       environment: {
         LINE_NOTIFY_TOKEN: process.env.LINE_NOTIFY_TOKEN || '',
       },
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: sentryLogGroup,
       description: 'Sentry to LINE Notify webhook handler',
+    });
+
+    // データ分析Lambda関数のロググループ
+    const analysisLogGroup = new logs.LogGroup(this, 'DataAnalysisLambdaLogGroup', {
+      logGroupName: '/aws/lambda/sap-data-analysis',
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // データ分析Lambda関数
@@ -135,7 +165,7 @@ export class CdkStack extends cdk.Stack {
         SUPABASE_URL: process.env.VITE_SUPABASE_URL || '',
         SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || '',
       },
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: analysisLogGroup,
       description: 'SAP data analysis and AI processing',
     });
 
@@ -173,58 +203,58 @@ export class CdkStack extends cdk.Stack {
       displayName: 'SAP Pipeline Notifications',
     });
 
-    // CodeBuild プロジェクト
-    const buildProject = new codebuild.Project(this, 'SapFrontendBuild', {
-      projectName: 'sap-frontend-build',
-      source: codebuild.Source.gitHub({
-        owner: 'your-github-username', // 実際のGitHubユーザー名に変更
-        repo: 'sap-project-frontend',
-        webhook: true,
-        webhookFilters: [
-          codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs('main'),
-        ],
-      }),
-      environment: {
-        buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
-        computeType: codebuild.ComputeType.SMALL,
-      },
-      buildSpec: codebuild.BuildSpec.fromObject({
-        version: '0.2',
-        phases: {
-          pre_build: {
-            commands: [
-              'echo Logging in to Amazon ECR...',
-              'echo Build started on `date`',
-              'npm ci',
-            ],
-          },
-          build: {
-            commands: [
-              'echo Build started on `date`',
-              'npm run build',
-              'npm run test -- --coverage --watchAll=false',
-            ],
-          },
-          post_build: {
-            commands: [
-              'echo Build completed on `date`',
-            ],
-          },
-        },
-        artifacts: {
-          files: [
-            '**/*',
-          ],
-          'base-directory': 'dist',
-        },
-        cache: {
-          paths: [
-            '/root/.npm/**/*',
-          ],
-        },
-      }),
-      cache: codebuild.Cache.local(codebuild.LocalCacheMode.CUSTOM),
-    });
+    // CodeBuild プロジェクト (一時的にコメントアウト - GitHub接続問題回避)
+    // const buildProject = new codebuild.Project(this, 'SapFrontendBuild', {
+    //   projectName: 'sap-frontend-build',
+    //   source: codebuild.Source.gitHub({
+    //     owner: process.env.GITHUB_OWNER || 'your-github-username',
+    //     repo: process.env.GITHUB_REPO || 'sap-project-frontend',
+    //     webhook: true,
+    //     webhookFilters: [
+    //       codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs('main'),
+    //     ],
+    //   }),
+    //   environment: {
+    //     buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+    //     computeType: codebuild.ComputeType.SMALL,
+    //   },
+    //   buildSpec: codebuild.BuildSpec.fromObject({
+    //     version: '0.2',
+    //     phases: {
+    //       pre_build: {
+    //         commands: [
+    //           'echo Logging in to Amazon ECR...',
+    //           'echo Build started on `date`',
+    //           'npm ci',
+    //         ],
+    //       },
+    //       build: {
+    //         commands: [
+    //           'echo Build started on `date`',
+    //           'npm run build',
+    //           'npm run test -- --coverage --watchAll=false',
+    //         ],
+    //       },
+    //       post_build: {
+    //         commands: [
+    //           'echo Build completed on `date`',
+    //         ],
+    //       },
+    //     },
+    //     artifacts: {
+    //       files: [
+    //         '**/*',
+    //       ],
+    //       'base-directory': 'dist',
+    //     },
+    //     cache: {
+    //       paths: [
+    //         '/root/.npm/**/*',
+    //       ],
+    //     },
+    //   }),
+    //   cache: codebuild.Cache.local(codebuild.LocalCacheMode.CUSTOM),
+    // });
 
     // ==================================================
     // 4. 監視・アラート
