@@ -4,6 +4,7 @@ import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import ColumnMappingLearning from './components/ColumnMappingLearning'
+import SimpleAuth from './components/SimpleAuth'
 import { ErrorBoundary, SentryErrorBoundary } from './components/ErrorBoundary'
 import { saveFormatProfile, getFormatProfile } from './lib/supabase'
 import { checkSupabaseConfig } from './lib/debug-supabase'
@@ -204,15 +205,9 @@ const analyzeSalesData = (data: SalesData[]) => {
 };
 
 function App() {
-  // デフォルトユーザー（認証なし）
-  const [user] = useState<User>({
-    id: 'default',
-    name: 'ユーザー',
-    company: 'SAP Strategic AI Platform',
-    usageCount: 0,
-    usageLimit: 999
-  })
-  const [isAuthenticating] = useState(false)
+  // 認証状態
+  const [user, setUser] = useState<User | null>(null)
+  const [isAuthenticating, setIsAuthenticating] = useState(true)
   
   const [prompt, setPrompt] = useState('')
   const [response, setResponse] = useState('')
@@ -229,9 +224,45 @@ function App() {
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null)
   const [imageAnalysisResult, setImageAnalysisResult] = useState<string>('')
 
+  // 認証チェック（ページ読み込み時）
+  useEffect(() => {
+    const savedUser = localStorage.getItem('auth_user')
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser))
+      } catch (error) {
+        console.error('認証情報の読み込みエラー:', error)
+        localStorage.removeItem('auth_user')
+      }
+    }
+    setIsAuthenticating(false)
+  }, [])
 
-  // ログアウト処理（リセットのみ）
+  // ログイン処理
+  const handleLogin = (loggedInUser: User) => {
+    setUser(loggedInUser)
+  }
+
+  // 使用回数制限チェック
+  const checkUsageLimit = () => {
+    if (!user) return false
+    if (user.usageLimit === 999) return true // 無制限ユーザー
+    return user.usageCount < user.usageLimit
+  }
+
+  // 使用回数をカウント
+  const incrementUsageCount = () => {
+    if (!user) return
+    const updatedUser = { ...user, usageCount: user.usageCount + 1 }
+    setUser(updatedUser)
+    localStorage.setItem('auth_user', JSON.stringify(updatedUser))
+  }
+
+
+  // ログアウト処理
   const handleLogout = () => {
+    setUser(null)
+    localStorage.removeItem('auth_user')
     // 状態をリセット
     setResponse('')
     setSalesData([])
@@ -1013,6 +1044,12 @@ function App() {
   const handleSubmit = async () => {
     if (!prompt.trim()) return
 
+    // 使用回数制限チェック
+    if (!checkUsageLimit()) {
+      alert(`使用回数制限に達しました。残り回数: ${user!.usageLimit - user!.usageCount}回`)
+      return
+    }
+
     setIsLoading(true)
     setResponse('')
 
@@ -1168,6 +1205,9 @@ ${dataTable}
       console.log('🚀 API応答:', result.data);
       const payload = result.data;
       setResponse(typeof payload === 'string' ? payload : stringifyForDisplay(payload))
+      
+      // 成功時に使用回数をカウント
+      incrementUsageCount()
     } catch (error: any) {
       console.error('❌ API Error詳細:', error);
       console.error('❌ Error Config:', error.config);
@@ -1237,7 +1277,12 @@ ${dataTable}
     )
   }
 
-  // メインアプリ
+  // 未認証の場合ログイン画面
+  if (!user) {
+    return <SimpleAuth onLogin={handleLogin} />
+  }
+
+  // 認証済みの場合メインアプリ
   return (
     <SentryErrorBoundary>
       <div style={{
